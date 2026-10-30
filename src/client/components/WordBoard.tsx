@@ -1,3 +1,4 @@
+import type { CSSProperties } from 'react';
 import type { PlayerView } from '../../shared/types';
 
 interface Props {
@@ -23,6 +24,7 @@ export function WordBoard({ view, revealed, shakeKey }: Props) {
             ) : (
               <span
                 key={ti}
+                style={{ '--tilt': `${(((wi * 7 + ti * 13) % 5) - 2) * 0.7}deg` } as CSSProperties}
                 className={`tile${t.ch ? ' shown' : ''}${markMissed && t.ch && !view.guessed[t.ch] ? ' missed' : ''}`}
               >
                 {t.ch ?? ''}

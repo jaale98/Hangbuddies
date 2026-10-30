@@ -1,102 +1,243 @@
-import { useEffect, useRef, useState } from 'react';
+import { memo, useEffect, useMemo, useRef, useState } from 'react';
 import type { RoundStatus } from '../../shared/types';
-import { HAND, StickFigure, type Pose } from './StickFigure';
-
-export const BALLOON_COLORS = ['#ef476f', '#ffd166', '#06d6a0', '#118ab2', '#f78c6b', '#9b5de5', '#ff70a6', '#4cc9f0'];
-// Balloons pop in this order so it doesn't look like a left-to-right sweep.
-const POP_ORDER = [3, 6, 1, 5, 0, 7, 2, 4];
+import { BalloonBunch, bunchTop } from '../art/Balloons';
+import { blob, brush, inkCircle, inkCurve, n, seeded, type P } from '../art/ink';
+import { HAND, StickFigure, type Mood, type Pose } from './StickFigure';
 
 const W = 360;
 const H = 380;
 const GROUND = 348; // y of the ground line
-const SCALE = 0.8; // figure units → scene units
-const FEET = 132 * SCALE; // feet sit at y=132 in figure units (every pose)
-const TOP_MARGIN = 16;
-const BOB = 8; // idle bob amplitude, in scene units
-const BALLOON_RY = 27;
+const SCALE = 0.86; // figure units → scene units
+const FEET = 132 * SCALE; // feet (and a sitting bottom) sit at y=132 in figure units
+const TOP_MARGIN = 14;
+const BOB = 7; // idle bob amplitude, in scene units
 const FALL_MS = 650;
+const LANDING = [100, 265]; // keep the ground here flat and free of decorations
+// Centre the buddy + bunch as one composition (body at x=50, bunch centred on the hand).
+const TX = W / 2 - ((50 + HAND[0]) / 2) * SCALE;
 
-export function balloonLayout(n: number) {
-  return Array.from({ length: n }, (_, i) => {
-    const a = (((n === 1 ? 0 : -48 + (96 * i) / (n - 1)) as number) * Math.PI) / 180;
-    const d = i % 2 ? 98 : 124;
-    return { x: HAND.x + Math.sin(a) * d, y: HAND.y - Math.cos(a) * d, color: BALLOON_COLORS[i % BALLOON_COLORS.length] };
-  });
+const GRASS_INK = '#4f8f5a';
+const motionOK = typeof window === 'undefined' || !window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+
+// ---------------- backdrop ----------------
+
+function Sun() {
+  const art = useMemo(() => {
+    const r = seeded(11);
+    const rays = Array.from({ length: 12 }, (_, i) => {
+      const a = (i / 12) * Math.PI * 2 + (r() - 0.5) * 0.14;
+      const r0 = 25;
+      const r1 = 31 + (i % 2) * 4;
+      const c = Math.cos(a);
+      const s = Math.sin(a);
+      return inkCurve([c * r0, s * r0], [c * (r0 + r1) * 0.5, s * (r0 + r1) * 0.5], [c * r1, s * r1], 2.6, r);
+    });
+    return { rays, fill: blob(1.3, 1.5, 19, r), outline: inkCircle(0, 0, 19.4, 2.6, r) };
+  }, []);
+  return (
+    <g transform="translate(404 56)">
+      <g>
+        {motionOK && <animateTransform attributeName="transform" type="rotate" from="0" to="360" dur="120s" repeatCount="indefinite" />}
+        {art.rays.map((d, i) => (
+          <path key={i} d={d} fill="#f0a500" />
+        ))}
+      </g>
+      <path d={art.fill} fill="#ffd166" />
+      <path d={art.outline} fill="#e09a00" />
+    </g>
+  );
 }
 
-export function Balloon({ x, y, color, popped, index }: { x: number; y: number; color: string; popped: boolean; index: number }) {
+const CLOUD = 'M-30 8 Q-36 -4 -23 -6 Q-21 -18 -7 -16 Q0 -27 13 -18 Q27 -21 28 -7 Q38 -5 34 8 Q2 11 -30 8 Z';
+const CLOUD_SHADE = 'M-28 5.6 Q2 9 32 5.6 Q31.4 8.8 27 9.4 Q2 11.6 -25 9.6 Q-28.6 8.6 -28 5.6 Z';
+
+function Cloud({ x, y, s, dur, delay }: { x: number; y: number; s: number; dur: number; delay: number }) {
   return (
-    <g className={`balloon${popped ? ' popped' : ''}`}>
+    <g className="cloud" style={{ animationDuration: `${dur}s`, animationDelay: `${delay}s` }}>
+      <g transform={`translate(${x} ${y}) scale(${s})`}>
+        <path d={CLOUD} fill="#fff" transform="translate(1.6 1.8)" />
+        <path d={CLOUD_SHADE} fill="#dcebf6" />
+        <path d={CLOUD} fill="none" stroke="#9fc4de" strokeWidth={1.6 / s} strokeLinejoin="round" />
+      </g>
+    </g>
+  );
+}
+
+function Bird({ x, y, s, dur }: { x: number; y: number; s: number; dur: number }) {
+  const up = 'M-6 0 Q-3 -3.4 0 0 Q3 -3.4 6 0';
+  const down = 'M-6 -1.6 Q-3 1.6 0 0 Q3 1.6 6 -1.6';
+  return (
+    <path d={up} transform={`translate(${x} ${y}) scale(${s})`} fill="none" stroke="#2b2d42" strokeWidth={1.4} strokeLinecap="round" strokeLinejoin="round">
+      {motionOK && <animate attributeName="d" values={`${up};${down};${up}`} dur={`${dur}s`} repeatCount="indefinite" />}
+    </path>
+  );
+}
+
+function Tree({ x }: { x: number }) {
+  const art = useMemo(() => {
+    const r = seeded(23);
+    return {
+      trunk: inkCurve([x, GROUND + 2], [x - 3, GROUND - 26], [x + 2, GROUND - 52], 7.5, r),
+      branch: inkCurve([x - 1, GROUND - 30], [x + 6, GROUND - 36], [x + 12, GROUND - 46], 3.2, r),
+    };
+  }, [x]);
+  const crown: [number, number, number][] = [
+    [x - 15, GROUND - 62, 19],
+    [x + 7, GROUND - 74, 22],
+    [x + 19, GROUND - 55, 17],
+    [x - 3, GROUND - 50, 17],
+  ];
+  return (
+    <g>
+      <path d={art.trunk} fill="#8a5a3b" />
+      <path d={art.branch} fill="#8a5a3b" />
+      {/* Outlines first, fills on top: the inner lines disappear and leave one clean silhouette. */}
+      {crown.map(([cx, cy, cr], i) => (
+        <circle key={`o${i}`} cx={cx} cy={cy} r={cr} fill="none" stroke="#3f7f4a" strokeWidth={3.2} />
+      ))}
+      {crown.map(([cx, cy, cr], i) => (
+        <circle key={`f${i}`} cx={cx} cy={cy} r={cr} fill="#7fcf86" />
+      ))}
+      <ellipse cx={x - 9} cy={GROUND - 72} rx={8} ry={5} fill="#a3e0a7" transform={`rotate(-20 ${x - 9} ${GROUND - 72})`} />
       <path
-        className="balloon-string"
-        d={`M${HAND.x} ${HAND.y} Q${(HAND.x + x) / 2 + 8} ${(HAND.y + y) / 2 + 10} ${x} ${y + 27}`}
-        stroke="#6c757d"
+        d={`M${x - 20} ${GROUND - 56} l3 3 M${x + 2} ${GROUND - 64} l3 3 M${x + 14} ${GROUND - 50} l3 3 M${x + 10} ${GROUND - 82} l3 3`}
+        stroke="#4f9a59"
         strokeWidth={1.4}
-        fill="none"
+        strokeLinecap="round"
       />
-      <g className="balloon-body" style={{ animationDelay: `${-index * 0.37}s` }}>
-        <path d={`M${x} ${y + 26} l-4 6 h8 z`} fill={color} />
-        <ellipse cx={x} cy={y} rx={22} ry={BALLOON_RY} fill={color} stroke="rgba(0,0,0,.18)" strokeWidth={1.5} />
-        <ellipse cx={x - 8} cy={y - 10} rx={5} ry={8} fill="#fff" opacity={0.45} transform={`rotate(25 ${x - 8} ${y - 10})`} />
-      </g>
-      {popped && (
-        <g className="pop-burst" stroke={color} strokeWidth={3} strokeLinecap="round">
-          {[0, 45, 90, 135, 180, 225, 270, 315].map((a) => {
-            const r = (a * Math.PI) / 180;
-            return (
-              <path
-                key={a}
-                d={`M${x + Math.cos(r) * 18} ${y + Math.sin(r) * 18} L${x + Math.cos(r) * 32} ${y + Math.sin(r) * 32}`}
-              />
-            );
-          })}
-        </g>
-      )}
+      <circle cx={x - 6} cy={GROUND - 58} r={2.6} fill="#ef476f" stroke="#2b2d42" strokeWidth={0.8} />
+      <circle cx={x + 17} cy={GROUND - 66} r={2.4} fill="#ef476f" stroke="#2b2d42" strokeWidth={0.8} />
     </g>
   );
 }
 
-function Cloud({ x, y, s, dur }: { x: number; y: number; s: number; dur: number }) {
+function Fence({ x0 }: { x0: number }) {
+  const posts = [0, 1, 2, 3].map((i) => ({ x: x0 + i * 21, h: 25 + ((i * 7) % 4), lean: ((i * 5) % 3) - 1 }));
   return (
-    <g className="cloud" style={{ animationDuration: `${dur}s`, animationDelay: `${-x / 10}s` }}>
-      <g transform={`translate(${x} ${y}) scale(${s})`} fill="#fff" opacity={0.9}>
-        <ellipse cx={0} cy={10} rx={34} ry={14} />
-        <circle cx={-12} cy={2} r={14} />
-        <circle cx={10} cy={-2} r={18} />
+    <g stroke="#6b5b4b" strokeWidth={1.3} strokeLinejoin="round">
+      <rect x={x0 - 6} y={GROUND - 19} width={75} height={4.4} rx={1.5} fill="#fff4e0" transform={`rotate(-1.2 ${x0} ${GROUND})`} />
+      <rect x={x0 - 6} y={GROUND - 9} width={75} height={4.4} rx={1.5} fill="#fff4e0" transform={`rotate(0.8 ${x0} ${GROUND})`} />
+      {posts.map((p) => (
+        <path
+          key={p.x}
+          d={`M${p.x - 4} ${GROUND + 1} L${p.x - 4 + p.lean} ${GROUND - p.h + 5} L${p.x + p.lean} ${GROUND - p.h} L${p.x + 4 + p.lean} ${GROUND - p.h + 5} L${p.x + 4} ${GROUND + 1} Z`}
+          fill="#fffaf0"
+        />
+      ))}
+    </g>
+  );
+}
+
+const bladeWidth = (w: number) => (t: number) => w * (1 - t * 0.75);
+
+function Tuft({ x, s, seed }: { x: number; s: number; seed: number }) {
+  const blades = useMemo(() => {
+    const r = seeded(seed);
+    const b: [P, P, P][] = [
+      [[x - 2, GROUND + 1], [x - 4, GROUND - 4], [x - 6 - r() * 2, GROUND - 9 * s]],
+      [[x, GROUND + 1], [x + 0.5, GROUND - 6], [x + r() * 2 - 1, GROUND - 13 * s]],
+      [[x + 2, GROUND + 1], [x + 4, GROUND - 4], [x + 6 + r() * 2, GROUND - 8 * s]],
+    ];
+    return b.map((curve) => inkCurve(...curve, 2.2, r, bladeWidth));
+  }, [x, s, seed]);
+  return (
+    <g fill="#5aa863">
+      {blades.map((d, i) => (
+        <path key={i} d={d} />
+      ))}
+    </g>
+  );
+}
+
+function Flower({ x, color }: { x: number; color: string }) {
+  const top = GROUND - 13;
+  return (
+    <g>
+      <path d={`M${x} ${GROUND + 1} Q${x - 2} ${GROUND - 6} ${x} ${top}`} stroke="#4f9a59" strokeWidth={1.6} fill="none" strokeLinecap="round" />
+      <path d={`M${x - 1} ${GROUND - 5} q-4 -3 -6 0 q3 2 6 0z`} fill="#5aa863" />
+      <g stroke="#2b2d42" strokeWidth={0.7}>
+        {[0, 72, 144, 216, 288].map((a) => (
+          <ellipse key={a} cx={x} cy={top - 3.2} rx={1.9} ry={3.2} fill={color} transform={`rotate(${a} ${x} ${top})`} />
+        ))}
+        <circle cx={x} cy={top} r={1.8} fill="#ffd166" />
       </g>
     </g>
   );
 }
 
-function Ground({ thud }: { thud: boolean }) {
-  // The ground is flat under the buddy so a landing visibly touches it; hills sit off to the sides.
-  // Everything is drawn well past the viewBox so wide stages are filled edge to edge.
+function Ground() {
+  const art = useMemo(() => {
+    const r = seeded(5);
+    // A hand-drawn horizon line that is dead flat across the landing strip.
+    const pts: P[] = [];
+    for (let x = -540; x <= 940; x += 18) {
+      const flat = x > LANDING[0] - 20 && x < LANDING[1] + 20;
+      pts.push([x, GROUND + (flat ? 0 : (r() - 0.5) * 2.4)]);
+    }
+    const edge = brush(pts, () => 2.2, r, 0.25);
+    const dashes = Array.from({ length: 34 }, () => {
+      const x = -520 + r() * 1440;
+      const y = GROUND + 8 + r() * 26;
+      return `M${n(x)} ${n(y)} l${n(5 + r() * 6)} ${n((r() - 0.5) * 1.5)}`;
+    }).join(' ');
+    return { edge, dashes };
+  }, []);
   return (
-    <g className={thud ? 'ground thud' : 'ground'}>
-      <ellipse cx={-10} cy={GROUND + 6} rx={110} ry={34} fill="#a6e0a0" />
-      <ellipse cx={385} cy={GROUND + 8} rx={130} ry={40} fill="#a6e0a0" />
-      <ellipse cx={-260} cy={GROUND + 4} rx={150} ry={30} fill="#a6e0a0" />
-      <ellipse cx={640} cy={GROUND + 6} rx={160} ry={34} fill="#a6e0a0" />
-      <rect x={-700} y={GROUND} width={1760} height={H} fill="#8fd694" />
-      <rect x={-700} y={GROUND + 14} width={1760} height={H} fill="#6cc070" />
-      <path d={`M-700 ${GROUND} H1060`} stroke="#79c47f" strokeWidth={2} />
-      {[22, 88, 262, 330, -80, 430].map((x) => (
-        <path key={x} d={`M${x} ${GROUND + 1} l3 -10 l3 10 l3 -8 l2 8`} stroke="#4a9e50" strokeWidth={2} fill="none" />
+    <g>
+      <rect x={-560} y={GROUND} width={1520} height={H} fill="#8fd694" />
+      <rect x={-560} y={GROUND + 18} width={1520} height={H} fill="#7cc683" />
+      <path d={art.dashes} stroke="#64b36c" strokeWidth={1.4} strokeLinecap="round" opacity={0.7} />
+      <path d={art.edge} fill={GRASS_INK} />
+      {[-230, -170, -96, -32, 94, 282, 342, 404, 470, 548].map((x, i) => (
+        <Tuft key={x} x={x} s={0.8 + (i % 3) * 0.15} seed={i + 40} />
       ))}
-      {[
-        [56, '#ff70a6'],
-        [300, '#ffd166'],
-        [-30, '#4cc9f0'],
-      ].map(([x, c]) => (
-        <g key={x as number} transform={`translate(${x} ${GROUND - 10})`}>
-          <path d="M0 0 V10" stroke="#4a9e50" strokeWidth={2} />
-          <circle r={4} fill={c as string} />
-          <circle r={1.8} fill="#fff" />
-        </g>
-      ))}
+      <Flower x={-188} color="#ff70a6" />
+      <Flower x={-64} color="#ffd166" />
+      <Flower x={92} color="#5fc8ee" />
+      <Flower x={298} color="#ff70a6" />
+      <Flower x={436} color="#ffd166" />
+      <g fill="#c9c2b6" stroke="#8d8577" strokeWidth={0.8}>
+        <ellipse cx={-118} cy={GROUND + 10} rx={4} ry={2.4} />
+        <ellipse cx={278} cy={GROUND + 14} rx={3.2} ry={2} />
+        <ellipse cx={510} cy={GROUND + 9} rx={4.4} ry={2.6} />
+      </g>
     </g>
   );
 }
+
+/** Everything behind the buddy. Static, so it's memoized and never re-rendered. */
+const Backdrop = memo(function Backdrop() {
+  return (
+    <g>
+      <defs>
+        <linearGradient id="sky" gradientUnits="userSpaceOnUse" x1="0" y1="-40" x2="0" y2={GROUND}>
+          <stop offset="0" stopColor="#9dd2f1" />
+          <stop offset="1" stopColor="#eaf7fd" />
+        </linearGradient>
+      </defs>
+      <rect x={-560} y={-300} width={1520} height={GROUND + 300} fill="url(#sky)" />
+      <Sun />
+      <Cloud x={70} y={64} s={1} dur={150} delay={-40} />
+      <Cloud x={250} y={118} s={0.72} dur={115} delay={-80} />
+      <Cloud x={160} y={34} s={0.55} dur={190} delay={-10} />
+      <Cloud x={-160} y={150} s={0.85} dur={170} delay={-120} />
+      <g className="birds">
+        <Bird x={0} y={96} s={1} dur={0.5} />
+        <Bird x={17} y={104} s={0.8} dur={0.42} />
+      </g>
+      {/* Far hills */}
+      <path d={`M-560 ${GROUND - 14} Q-470 300 -380 322 T-200 316 T-20 326 T160 312 T340 322 T520 306 T700 322 T940 316 V${GROUND + 5} H-560 Z`} fill="#cdeedb" />
+      {/* Near hills */}
+      <path d={`M-440 ${GROUND + 1} C-380 300 -240 294 -150 328 C-118 340 -92 346 -60 ${GROUND + 1} Z`} fill="#a8dda8" stroke={GRASS_INK} strokeWidth={1.5} strokeLinejoin="round" />
+      <path d={`M262 ${GROUND + 1} C300 322 380 302 470 314 C540 324 600 340 650 ${GROUND + 1} Z`} fill="#a8dda8" stroke={GRASS_INK} strokeWidth={1.5} strokeLinejoin="round" />
+      <Tree x={318} />
+      <Fence x0={16} />
+      <Ground />
+    </g>
+  );
+});
+
+// ---------------- the buddy ----------------
 
 interface Props {
   avatarId: string;
@@ -107,24 +248,21 @@ interface Props {
 }
 
 /** Vertical position of the buddy (top of figure coordinates, in scene units). */
-function altitude(status: RoundStatus, balloonsLeft: number, maxBalloons: number, clusterTop: number): number {
-  const onGround = GROUND - FEET; // feet exactly on the ground line
+function altitude(status: RoundStatus, balloonsLeft: number, maxBalloons: number): number {
+  const onGround = GROUND - FEET;
   if (status === 'fell') return onGround;
-  if (status === 'timeout') return -340; // drifts off the top
+  if (status === 'timeout') return -420; // floats away off the top
   // Highest point keeps the top balloon (plus bob) inside the frame.
-  const highest = TOP_MARGIN + BOB - clusterTop * SCALE;
-  const lowest = onGround - 26; // one balloon left: hovering just above the grass
+  const highest = TOP_MARGIN + BOB - (HAND[1] + bunchTop(maxBalloons)) * SCALE;
+  const lowest = onGround - 24; // one balloon left: toes just above the grass
   if (maxBalloons <= 1) return highest;
   return lowest - ((lowest - highest) * (balloonsLeft - 1)) / (maxBalloons - 1);
 }
 
-export function SkyScene({ avatarId, status, balloonsLeft, maxBalloons, roundKey }: Props) {
-  const popped = maxBalloons - balloonsLeft;
-  const balloons = balloonLayout(maxBalloons);
-  const clusterTop = Math.min(...balloons.map((b) => b.y)) - BALLOON_RY;
-  const poppedSet = new Set(POP_ORDER.filter((i) => i < maxBalloons).slice(0, popped));
+const SPARKLE = 'M0 -8 Q1 -1 8 0 Q1 1 0 8 Q-1 1 -8 0 Q-1 -1 0 -8 Z';
 
-  // While falling, show the flailing pose; switch to dizzy the moment the drop transition ends.
+export function SkyScene({ avatarId, status, balloonsLeft, maxBalloons, roundKey }: Props) {
+  // While falling, show the flailing pose; plop down dizzy the moment the drop transition ends.
   const [landed, setLanded] = useState(status === 'fell');
   const prevStatus = useRef(status);
   useEffect(() => {
@@ -138,51 +276,49 @@ export function SkyScene({ avatarId, status, balloonsLeft, maxBalloons, roundKey
   }, [status]);
 
   let pose: Pose = 'hold';
-  if (status === 'solved') pose = 'cheer';
+  let mood: Mood | undefined;
+  if (status === 'solved') pose = 'celebrate';
   else if (status === 'fell') pose = landed ? 'dizzy' : 'fall';
+  else if (status === 'timeout') mood = 'worried';
+  else if (status === 'playing' && maxBalloons > 2 && balloonsLeft <= 2) mood = 'worried';
 
-  const ty = altitude(status, balloonsLeft, maxBalloons, clusterTop);
-  const tx = W / 2 - 50 * SCALE - 12;
+  const ty = altitude(status, balloonsLeft, maxBalloons);
+  const tx = status === 'timeout' ? TX + 70 : TX;
 
   return (
     <svg className="sky-scene" viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="xMidYMax meet" aria-hidden="true">
-      <Cloud x={60} y={60} s={1} dur={70} />
-      <Cloud x={250} y={110} s={0.7} dur={55} />
-      <Cloud x={170} y={30} s={0.5} dur={90} />
-      <Cloud x={-200} y={140} s={0.8} dur={80} />
-      <Cloud x={480} y={70} s={0.9} dur={65} />
-      <Ground thud={status === 'fell' && landed} />
+      <Backdrop />
       <g
         key={roundKey}
         className={`floater status-${status}`}
-        style={{ transform: `translate(${tx}px, ${ty}px) scale(${SCALE})`, transitionDuration: status === 'fell' ? `${FALL_MS}ms` : undefined }}
+        style={{ transform: `translate(${n(tx)}px, ${n(ty)}px) scale(${SCALE})`, transitionDuration: status === 'fell' ? `${FALL_MS}ms` : undefined }}
         onTransitionEnd={(e) => {
           if (e.target === e.currentTarget && status === 'fell') setLanded(true);
         }}
       >
         <g className={status === 'playing' || status === 'spectating' || status === 'solved' ? 'bob' : ''}>
-          {balloons.map((b, i) => (
-            <Balloon key={i} index={i} {...b} popped={poppedSet.has(i)} />
-          ))}
+          <BalloonBunch count={maxBalloons} left={balloonsLeft} hand={HAND} />
           <g className={status === 'fell' && landed ? 'squash' : ''}>
-            <StickFigure avatarId={avatarId} pose={pose} embedded />
+            <StickFigure avatarId={avatarId} pose={pose} mood={mood} embedded />
           </g>
           {status === 'fell' && landed && (
-            <g className="dust" fill="#e9e4d4">
-              <ellipse cx={26} cy={130} rx={14} ry={7} />
-              <ellipse cx={74} cy={130} rx={14} ry={7} />
-              <ellipse cx={50} cy={134} rx={20} ry={6} />
+            <g className="dust" fill="#efe8d6" stroke="#cfc6b0" strokeWidth={0.8}>
+              <ellipse cx={20} cy={130} rx={11} ry={5.5} />
+              <ellipse cx={80} cy={130} rx={11} ry={5.5} />
+              <ellipse cx={50} cy={133} rx={17} ry={5} />
             </g>
           )}
           {status === 'solved' && (
-            <g className="sparkles" fill="#ffd166">
+            <g className="sparkles" fill="#ffd166" stroke="#c98a00" strokeWidth={0.8} strokeLinejoin="round">
               {[
-                [10, 10],
-                [95, 0],
-                [0, 70],
-                [100, 80],
-              ].map(([x, y], i) => (
-                <path key={i} d={`M${x} ${y - 9} L${x + 3} ${y - 3} L${x + 9} ${y} L${x + 3} ${y + 3} L${x} ${y + 9} L${x - 3} ${y + 3} L${x - 9} ${y} L${x - 3} ${y - 3} Z`} style={{ animationDelay: `${i * 0.15}s` }} />
+                [10, 44, 1],
+                [16, 92, 0.7],
+                [98, 66, 0.85],
+                [104, 104, 0.6],
+              ].map(([x, y, s], i) => (
+                <g key={i} transform={`translate(${x} ${y}) scale(${s})`}>
+                  <path d={SPARKLE} style={{ animationDelay: `${i * 0.18}s` }} />
+                </g>
               ))}
             </g>
           )}

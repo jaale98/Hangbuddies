@@ -7,15 +7,15 @@ import { set } from '../state/store';
 
 export function maybeStartPreview(): boolean {
   const q = new URLSearchParams(location.search);
-  const kind = q.get('preview');
-  if (!kind) return false;
-  socket.disconnect();
   if (q.has('still')) {
-    // Jump every animation to its end state (headless screenshots don't advance time).
+    // Jump every animation to its end state (headless screenshots don't advance time). Works on any page.
     const style = document.createElement('style');
     style.textContent = '*, *::before, *::after { animation-duration: 0s !important; animation-delay: 0s !important; transition: none !important; }';
     document.head.append(style);
   }
+  const kind = q.get('preview');
+  if (!kind || kind === 'gallery') return false;
+  socket.disconnect();
 
   const difficulty = (q.get('diff') ?? 'medium') as Difficulty;
   const max = BALLOONS[difficulty];

@@ -201,6 +201,13 @@ Disconnecting also re-checks whether the round is over, so one player who has go
   - `WordBoard` shows word groups of tiles, sized by phrase length. Missed letters turn red on reveal, and a wrong guess shakes the board.
   - `Keyboard` is a QWERTY layout with green, grey-strikethrough and pending states.
   - `Scoreboard` shows rows sorted by score, with FLIP reorder animation, count-up scores, and live status chips. On narrow screens it collapses into a top strip.
+- **Art system** (`src/client/art/`, `StickFigure.tsx`, `SkyScene.tsx`): everything is hand-built SVG with a storybook, hand-inked look.
+  - `art/ink.ts` builds **seeded** brush strokes. These are filled shapes whose width varies along the line, with round ends and slight wobble, plus pen-drawn circles that overlap where they close. Everything is deterministic, so a buddy looks identical every render, and there are no runtime SVG filters.
+  - **Misregistered fills:** colour fills are offset 1–2 units from their ink outlines, like a riso print. A tiled noise texture adds paper grain over the stage and page.
+  - **Buddies** have 8 poses (stand, wave, hold, celebrate, cheer, fall, a sitting `dizzy`, sad), 6 facial moods with blinking, and 12 redrawn accessories. A crown perches per accessory (on the hat, not through it). `AvatarHead` is used for small sizes.
+  - **Balloons** are hand-composed bunches for 6, 7 and 8 balloons. Strings are drawn behind all balloons and tied with a ribbon at the hand. Pops show a burst star and rubber shreds, and balloons already popped when you rejoin don't replay.
+  - **No collisions by construction:** the hand sits clear of the head and hats, status tags hang off the stage's bottom edge (never over the art), and the ground under the landing spot is flat.
+  - **Dev tools:** `/?preview=gallery` shows every buddy in every pose and mood, and `&still` freezes animations for screenshots.
 - **Audio:** sounds are synthesized with Web Audio oscillators and noise (pop, ding, solve jingle, fall + bonk, start, fanfare, last-5-seconds tick), so there are no audio files. The mute toggle is saved in `localStorage`.
 
 ## 9. Testing strategy

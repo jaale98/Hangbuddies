@@ -1,5 +1,5 @@
 import { useMemo } from 'react';
-import { BALLOON_COLORS } from './SkyScene';
+import { BALLOON_COLORS } from '../art/Balloons';
 
 export function Confetti({ count = 80 }: { count?: number }) {
   const pieces = useMemo(

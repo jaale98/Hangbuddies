@@ -3,7 +3,7 @@ import type { PlayerView, PublicRoomState } from '../../shared/types';
 import { sfx } from '../audio/sfx';
 import { Keyboard } from '../components/Keyboard';
 import { SkyScene } from '../components/SkyScene';
-import { StickFigure } from '../components/StickFigure';
+import { AvatarHead } from '../components/StickFigure';
 import { WordBoard } from '../components/WordBoard';
 import { useCountdown } from '../hooks';
 import { guess, leaveRoom } from '../net/socket';
@@ -23,7 +23,6 @@ function Timer({ deadline }: { deadline: number }) {
 }
 
 function StatusBanner({ view }: { view: PlayerView }) {
-  const lastOutcome = useStore((s) => s.lastOutcome);
   switch (view.status) {
     case 'solved':
       return (
@@ -42,11 +41,7 @@ function StatusBanner({ view }: { view: PlayerView }) {
     case 'spectating':
       return <div className="banner">You'll jump in next round. Watch the scoreboard!</div>;
     default:
-      return lastOutcome && !lastOutcome.correct ? (
-        <div className="pop-text" key={lastOutcome.at}>
-          POP!
-        </div>
-      ) : null;
+      return null; // pops are shown in the scene itself
   }
 }
 
@@ -67,7 +62,7 @@ function SummaryPanel({ room }: { room: PublicRoomState }) {
           const p = byId.get(r.playerId)!;
           return (
             <li key={r.playerId}>
-              <StickFigure avatarId={p.avatarId} size={26} pose={r.status === 'solved' ? 'cheer' : 'sad'} />
+              <AvatarHead avatarId={p.avatarId} size={30} mood={r.status === 'solved' ? 'joy' : r.status === 'fell' ? 'dizzy' : 'sad'} />
               <span className="sr-name">{p.name}</span>
               <span className={`sr-result ${r.status}`}>
                 {r.status === 'solved'
@@ -131,14 +126,16 @@ export function Game({ room, meId }: { room: PublicRoomState; meId: string }) {
         </button>
       </header>
 
-      <div className="stage">
-        <SkyScene
-          avatarId={me.avatarId}
-          status={view.status}
-          balloonsLeft={view.balloonsLeft}
-          maxBalloons={view.maxBalloons}
-          roundKey={view.roundIndex}
-        />
+      <div className="stage-wrap">
+        <div className="stage">
+          <SkyScene
+            avatarId={me.avatarId}
+            status={view.status}
+            balloonsLeft={view.balloonsLeft}
+            maxBalloons={view.maxBalloons}
+            roundKey={view.roundIndex}
+          />
+        </div>
         <StatusBanner view={view} />
       </div>
 

@@ -1,19 +1,16 @@
 import { useEffect, useState, type FormEvent } from 'react';
 import { CODE_ALPHABET, CODE_LENGTH } from '../../shared/constants';
-import { Balloon, balloonLayout } from '../components/SkyScene';
-import { StickFigure, FIGURE_VIEWBOX } from '../components/StickFigure';
+import { BalloonBunch } from '../art/Balloons';
+import { Logo } from '../components/Logo';
+import { HAND, StickFigure } from '../components/StickFigure';
 import { checkCode, errorText } from '../net/socket';
 import { get, set, useStore } from '../state/store';
 
 function HeroBuddy() {
-  const balloons = balloonLayout(5);
-  const { h } = FIGURE_VIEWBOX;
   return (
-    <svg className="hero-buddy" viewBox={`-45 -132 240 ${h + 122}`} aria-hidden="true">
+    <svg className="hero-buddy" viewBox="-6 -164 162 304" aria-hidden="true">
       <g className="bob">
-        {balloons.map((b, i) => (
-          <Balloon key={i} index={i} {...b} popped={false} />
-        ))}
+        <BalloonBunch count={6} left={6} hand={HAND} seed={3} />
         <StickFigure avatarId="party" pose="hold" embedded />
       </g>
     </svg>
@@ -57,9 +54,7 @@ export function Home() {
   return (
     <main className="home">
       <HeroBuddy />
-      <h1 className="logo">
-        Hang<span>buddies</span>
-      </h1>
+      <Logo />
       <p className="tagline">Guess the word before your balloons go pop!</p>
 
       {!joining ? (

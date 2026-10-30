@@ -4,7 +4,7 @@ import { sfx } from '../audio/sfx';
 import { Confetti } from '../components/Confetti';
 import { DifficultyPicker } from '../components/DifficultyPicker';
 import { RoundRecap } from '../components/SoloPanel';
-import { StickFigure } from '../components/StickFigure';
+import { AvatarHead, StickFigure } from '../components/StickFigure';
 import { useCountUp } from '../hooks';
 import { backToLobby, leaveRoom, setDifficulty, startGame } from '../net/socket';
 import { loadBest, saveBest, saveSoloDifficulty } from '../state/store';
@@ -133,7 +133,7 @@ export function Results({ room, meId }: { room: PublicRoomState; meId: string })
           {ranking.slice(3).map((r) => (
             <li key={r.playerId}>
               <span className="rest-place">{r.place}.</span>
-              <StickFigure avatarId={r.avatarId} size={26} />
+              <AvatarHead avatarId={r.avatarId} size={30} />
               <span className="rest-name">{r.name}</span>
               <span className="rest-score">{r.score.toLocaleString()}</span>
             </li>
