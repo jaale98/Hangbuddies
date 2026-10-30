@@ -7,11 +7,13 @@ import { HAND, StickFigure, type Mood, type Pose } from './StickFigure';
 const W = 360;
 const H = 380;
 const GROUND = 348; // y of the ground line
-const SCALE = 0.86; // figure units → scene units
+const SCALE = 0.8; // figure units → scene units
 const FEET = 132 * SCALE; // feet (and a sitting bottom) sit at y=132 in figure units
 const TOP_MARGIN = 14;
 const BOB = 7; // idle bob amplitude, in scene units
-const FALL_MS = 650;
+const HANG_MS = 200; // cartoon beat: hanging in mid-air for a moment before gravity notices
+const FALL_MS = 520;
+const LOW_HOVER = 58; // with one balloon left the buddy still hangs this high, so the final drop reads as a fall
 const LANDING = [100, 265]; // keep the ground here flat and free of decorations
 // Centre the buddy + bunch as one composition (body at x=50, bunch centred on the hand).
 const TX = W / 2 - ((50 + HAND[0]) / 2) * SCALE;
@@ -254,7 +256,7 @@ function altitude(status: RoundStatus, balloonsLeft: number, maxBalloons: number
   if (status === 'timeout') return -420; // floats away off the top
   // Highest point keeps the top balloon (plus bob) inside the frame.
   const highest = TOP_MARGIN + BOB - (HAND[1] + bunchTop(maxBalloons)) * SCALE;
-  const lowest = onGround - 24; // one balloon left: toes just above the grass
+  const lowest = onGround - LOW_HOVER; // one balloon left: still well up in the air
   if (maxBalloons <= 1) return highest;
   return lowest - ((lowest - highest) * (balloonsLeft - 1)) / (maxBalloons - 1);
 }
@@ -271,7 +273,7 @@ export function SkyScene({ avatarId, status, balloonsLeft, maxBalloons, roundKey
     if (status !== 'fell') return setLanded(false);
     if (was === 'fell') return;
     setLanded(false);
-    const fallback = setTimeout(() => setLanded(true), FALL_MS + 200);
+    const fallback = setTimeout(() => setLanded(true), HANG_MS + FALL_MS + 200);
     return () => clearTimeout(fallback);
   }, [status]);
 
@@ -286,12 +288,15 @@ export function SkyScene({ avatarId, status, balloonsLeft, maxBalloons, roundKey
   const tx = status === 'timeout' ? TX + 70 : TX;
 
   return (
-    <svg className="sky-scene" viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="xMidYMax meet" aria-hidden="true">
+    <svg className={`sky-scene${status === 'fell' && landed ? ' thud' : ''}`} viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="xMidYMax meet" aria-hidden="true">
       <Backdrop />
       <g
         key={roundKey}
         className={`floater status-${status}`}
-        style={{ transform: `translate(${n(tx)}px, ${n(ty)}px) scale(${SCALE})`, transitionDuration: status === 'fell' ? `${FALL_MS}ms` : undefined }}
+        style={{
+          transform: `translate(${n(tx)}px, ${n(ty)}px) scale(${SCALE})`,
+          ...(status === 'fell' ? { transitionDuration: `${FALL_MS}ms`, transitionDelay: `${HANG_MS}ms` } : null),
+        }}
         onTransitionEnd={(e) => {
           if (e.target === e.currentTarget && status === 'fell') setLanded(true);
         }}
@@ -301,6 +306,11 @@ export function SkyScene({ avatarId, status, balloonsLeft, maxBalloons, roundKey
           <g className={status === 'fell' && landed ? 'squash' : ''}>
             <StickFigure avatarId={avatarId} pose={pose} mood={mood} embedded />
           </g>
+          {status === 'fell' && !landed && (
+            <g className="speed-lines" stroke="#2b2d42" strokeWidth={1.6} strokeLinecap="round" opacity={0.45}>
+              <path d="M30 -16 L30 -34 M50 -24 L50 -48 M70 -16 L70 -34" />
+            </g>
+          )}
           {status === 'fell' && landed && (
             <g className="dust" fill="#efe8d6" stroke="#cfc6b0" strokeWidth={0.8}>
               <ellipse cx={20} cy={130} rx={11} ry={5.5} />
